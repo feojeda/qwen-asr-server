@@ -217,6 +217,47 @@ class TestASRServer(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_diarization_fallback(self):
+        """Cuando la diarización falla, debe degradar a transcripción simple."""
+        import diarization as diarization_module
+        original_diarize = diarization_module.diarization_manager.diarize
+
+        async def failing_diarize(*args, **kwargs):
+            raise RuntimeError("pyannote no disponible (simulado)")
+
+        diarization_module.diarization_manager.diarize = failing_diarize
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                import subprocess
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y", "-f", "lavfi", "-i",
+                        "sine=frequency=1000:duration=3",
+                        "-ar", "16000", "-ac", "1", tmp.name,
+                    ],
+                    capture_output=True, check=True,
+                )
+                audio_path = tmp.name
+
+            with open(audio_path, "rb") as f:
+                response = self.client.post(
+                    "/v1/audio/transcriptions",
+                    files={"file": ("test.wav", f, "audio/wav")},
+                    data={"language": "es", "diarize": "true"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertIn("text", data)
+            # La transcripción simple debe funcionar aunque falle diarización
+            self.assertTrue(len(data["text"]) > 0)
+            # El flag debe indicar que la diarización falló
+            self.assertTrue(data.get("diarization_failed"), 
+                           "diarization_failed debe ser True cuando pyannote falla")
+            Path(audio_path).unlink(missing_ok=True)
+        finally:
+            diarization_module.diarization_manager.diarize = original_diarize
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -14,8 +14,9 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-# HF_TOKEN puede ser None si el modelo ya está en caché o si se usa local
-HF_TOKEN = settings.__dict__.get("HF_TOKEN", None) or None
+# Token de HuggingFace para descargar modelos privados (pyannote).
+# Puede ser None si el modelo ya está en caché local.
+HF_TOKEN = settings.HF_TOKEN
 
 
 @dataclass
@@ -57,7 +58,10 @@ class DiarizationManager:
             )
 
         if pipeline is None:
-            raise RuntimeError("No se pudo cargar ningún pipeline de diarización.")
+            raise RuntimeError(
+                "No se pudo cargar ningún pipeline de diarización. "
+                "Verifica que HF_TOKEN esté configurado y que tengas acceso a los modelos pyannote."
+            )
 
         pipeline.to(torch.device(self.device))
         elapsed = time.time() - start
