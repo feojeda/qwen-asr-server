@@ -221,6 +221,7 @@ class TestASRServer(unittest.TestCase):
         """Cuando la diarización falla, debe degradar a transcripción simple."""
         import diarization as diarization_module
         original_diarize = diarization_module.diarization_manager.diarize
+        audio_path = None
 
         async def failing_diarize(*args, **kwargs):
             raise RuntimeError("pyannote no disponible (simulado)")
@@ -254,9 +255,10 @@ class TestASRServer(unittest.TestCase):
             # El flag debe indicar que la diarización falló
             self.assertTrue(data.get("diarization_failed"), 
                            "diarization_failed debe ser True cuando pyannote falla")
-            Path(audio_path).unlink(missing_ok=True)
         finally:
             diarization_module.diarization_manager.diarize = original_diarize
+            if audio_path:
+                Path(audio_path).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

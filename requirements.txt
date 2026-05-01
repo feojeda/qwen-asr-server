@@ -5,8 +5,12 @@
 #   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 # Core framework
-torch==2.11.0
-torchaudio==2.11.0
+# torch and torchaudio MUST be installed separately per platform
+# (not via requirements.txt). See ci.yml or platform-specific instructions:
+#   Mac ARM64 / Linux CPU: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+#   Linux CUDA 12.x:       pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126
+# torch==2.11.0
+# torchaudio==2.11.0
 qwen-asr==0.0.6
 
 # API

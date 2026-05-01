@@ -59,6 +59,10 @@ class TranscriptionSegment(BaseModel):
     start: float = Field(..., description="Segment start time in seconds")
     end: float = Field(..., description="Segment end time in seconds")
     text: str = Field(..., description="Transcribed text for this segment")
+    language: Optional[str] = Field(
+        default=None,
+        description="Language detected for this segment (e.g. Spanish, English)",
+    )
 
 
 # ── Diarization ────────────────────────────────────────────────────

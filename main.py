@@ -181,12 +181,16 @@ async def transcribe_audio(
                     start=seg.start,
                     end=seg.end,
                     text=seg_result["text"],
+                    language=seg_result.get("language"),
                 ))
 
         # 4. Construir texto completo concatenado
         full_text = " ".join(s.text for s in segments_output)
-        # Idioma detectado (del primer segmento que tenga idioma, o el input)
-        detected_lang = segments_output[0].text and language if segments_output else language
+        # Idioma detectado (del primer segmento, o fallback al hint del usuario)
+        if segments_output and segments_output[0].language:
+            detected_lang = segments_output[0].language
+        else:
+            detected_lang = language
 
         total_time = time.time() - total_start
 

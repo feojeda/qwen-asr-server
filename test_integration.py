@@ -158,9 +158,11 @@ class TestRealDiarization:
                 assert "end" in seg
                 assert "text" in seg
             else:
-                # Si no, debe tener el flag de fallback
-                # (no es obligatorio que falle — depende de pyannote)
-                pass
+                # Si no hay segmentos, debe indicar que la diarización falló
+                assert data.get("diarization_failed") is True, (
+                    "Si no hay segmentos y se pidió diarize=true, "
+                    "debe indicar diarization_failed=True"
+                )
         finally:
             audio_path.unlink(missing_ok=True)
 
