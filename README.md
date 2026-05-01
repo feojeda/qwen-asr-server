@@ -1,61 +1,63 @@
 # Qwen3-ASR Server
 
-**Audio → Texto con diarización de hablantes. El primer eslabón de una cadena que termina con voces que suenan como personas reales.**
+**Audio → Text with speaker diarization. The first link in a chain that ends with voices that sound like real people.**
+
+[**English**](README.md) | [Español](README.es.md) | [中文](README.zh.md) | [日本語](README.ja.md)
 
 ---
 
-## ¿Por qué existe esto?
+## Why this exists
 
-El doblaje automático de YouTube me saca de quicio. Una mujer hablando en japonés, y el doblaje al español le pone voz de hombre genérica. O peor: voces robóticas que te expulsan del video en 10 segundos.
+YouTube's auto-dubbing drives me crazy. A woman speaking in Japanese, and the Spanish dub gives her a generic male voice. Or worse: robotic voices that push you out of the video in 10 seconds.
 
-Ya tenía un servidor que convierte texto en audio con voces clonadas ([qwen-tts-server](https://github.com/feojeda/qwen-tts-server)). El paso lógico era cerrar el círculo:
+I already had a server that converts text to audio using cloned voices ([qwen-tts-server](https://github.com/feojeda/qwen-tts-server)). The logical next step was to close the loop:
 
 ```
-Audio original → Texto (ASR) → Traducción → Voz clonada (TTS)
+Original audio → Text (ASR) → Translation → Cloned voice (TTS)
 ```
 
-Este proyecto es el primer eslabón: **pasar de audio a texto, sabiendo quién dijo qué y cuándo**. El resto de la cadena — traducir, clonar voces, generar audio final — lo manejan otros servicios. Cada uno con una responsabilidad única.
+This project is the first link: **turning audio into text, knowing who said what and when**. The rest of the chain — translating, cloning voices, generating final audio — is handled by other services. Each with a single responsibility.
 
 ---
 
-## Dónde encaja
+## Where it fits
 
 ```
-qwen-asr-server  (este proyecto)     qwen-tts-server
+qwen-asr-server  (this project)     qwen-tts-server
   :8001                                :8000
-  Audio → Texto + Diarización         Texto → Audio con voz clonada
+  Audio → Text + Diarization         Text → Audio with cloned voice
        │                                     │
        └──────────────┬──────────────────────┘
                       │
               ttsQwen (frontend)
-              Orquesta la cadena completa:
-              Grabar → Transcribir → Traducir → Voice Clone → Generar audio
+              Orchestrates the full pipeline:
+              Record → Transcribe → Translate → Voice Clone → Generate audio
 ```
 
-Cada servidor hace una sola cosa y la hace bien. El frontend los consume vía REST. Si mañana cambio el motor ASR por otro, el frontend ni se entera.
+Each server does one thing and does it well. The frontend consumes them via REST. If I swap the ASR engine tomorrow, the frontend won't even notice.
 
 ---
 
-## Qué hace ahora
+## What it does now
 
-- **Transcripción de audio a texto** con modelos [`Qwen3-ASR`](https://huggingface.co/collections/Qwen/qwen3-asr) (0.6B y 1.7B)
-- **Diarización de hablantes** vía [`pyannote.audio`](https://github.com/pyannote/pyannote-audio) — quién habló y en qué momento
-- **API OpenAI-compatible** (`/v1/audio/transcriptions`, `/v1/models`)
-- **Chunking automático** para audios largos (>30 min)
-- **Graceful degradation**: si pyannote falla, transcribe igual y te avisa
-- **CPU-optimizado**: `bfloat16` en Apple Silicon M4, ~4.5x real-time con el modelo 0.6B
+- **Audio-to-text transcription** with [`Qwen3-ASR`](https://huggingface.co/collections/Qwen/qwen3-asr) models (0.6B and 1.7B)
+- **Speaker diarization** via [`pyannote.audio`](https://github.com/pyannote/pyannote-audio) — who spoke and when
+- **OpenAI-compatible API** (`/v1/audio/transcriptions`, `/v1/models`)
+- **Automatic chunking** for long audio (>30 min)
+- **Graceful degradation**: if pyannote fails, it still transcribes and lets you know
+- **CPU-optimized**: `bfloat16` on Apple Silicon M4, ~4.5x real-time with the 0.6B model
 
 ---
 
 ## Quick Start
 
-### Requisitos
+### Requirements
 
 - Python 3.12+
-- ffmpeg (`brew install ffmpeg` en macOS)
-- ~4 GB RAM libre (modelo 0.6B)
+- ffmpeg (`brew install ffmpeg` on macOS)
+- ~4 GB free RAM (0.6B model)
 
-### Instalación
+### Installation
 
 ```bash
 git clone https://github.com/feojeda/qwen-asr-server
@@ -67,26 +69,26 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
-### Arrancar
+### Run
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
-Primera request: ~60s (descarga el modelo). Siguientes: instantáneas.
+First request: ~60s (downloads the model). Subsequent requests: instant.
 
-### Probar
+### Test
 
 ```bash
 curl -X POST "http://localhost:8001/v1/audio/transcriptions" \
   -F "file=@audio.mp3" \
-  -F "language=es"
+  -F "language=en"
 ```
 
 ```json
 {
-  "text": "Hola, esto es una prueba de transcripción.",
-  "language": "Spanish",
+  "text": "Hello, this is a transcription test.",
+  "language": "English",
   "duration": 4.2,
   "processing_time": 0.9
 }
@@ -98,35 +100,35 @@ curl -X POST "http://localhost:8001/v1/audio/transcriptions" \
 
 ### `POST /v1/audio/transcriptions`
 
-Transcribe audio a texto. Con diarización opcional.
+Transcribes audio to text. Optional diarization.
 
-| Parámetro | Tipo | Default | Descripción |
+| Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `file` | file | *requerido* | Audio (mp3, wav, webm, ogg, m4a, flac) |
-| `language` | string | `auto` | Código de idioma: `es`, `en`, `zh`, `fr`, `de`, `pt`, etc. |
-| `prompt` | string | `""` | Contexto para guiar al modelo |
-| `diarize` | bool | `false` | Activar diarización de hablantes |
-| `num_speakers` | int | — | Número exacto de hablantes |
-| `min_speakers` | int | — | Mínimo de hablantes |
-| `max_speakers` | int | — | Máximo de hablantes |
+| `file` | file | *required* | Audio file (mp3, wav, webm, ogg, m4a, flac) |
+| `language` | string | `auto` | Language code: `en`, `es`, `zh`, `fr`, `de`, `pt`, etc. |
+| `prompt` | string | `""` | Context to guide the model |
+| `diarize` | bool | `false` | Enable speaker diarization |
+| `num_speakers` | int | — | Exact number of speakers |
+| `min_speakers` | int | — | Minimum number of speakers |
+| `max_speakers` | int | — | Maximum number of speakers |
 
-**Respuesta simple:**
+**Simple response:**
 
 ```json
 {
-  "text": "Buenos días a todos los presentes.",
-  "language": "Spanish",
+  "text": "Good morning everyone.",
+  "language": "English",
   "duration": 5.3,
   "processing_time": 2.1
 }
 ```
 
-**Respuesta con diarización:**
+**Response with diarization:**
 
 ```json
 {
-  "text": "Hola María. Hola Juan.",
-  "language": "Spanish",
+  "text": "Hi Maria. Hi John.",
+  "language": "English",
   "duration": 8.5,
   "processing_time": 4.2,
   "segments": [
@@ -134,92 +136,92 @@ Transcribe audio a texto. Con diarización opcional.
       "speaker": "SPEAKER_00",
       "start": 0.0,
       "end": 2.1,
-      "text": "Hola María.",
-      "language": "Spanish"
+      "text": "Hi Maria.",
+      "language": "English"
     },
     {
       "speaker": "SPEAKER_01",
       "start": 2.5,
       "end": 4.0,
-      "text": "Hola Juan.",
-      "language": "Spanish"
+      "text": "Hi John.",
+      "language": "English"
     }
   ]
 }
 ```
 
-Si pyannote falla, la respuesta incluye `"diarization_failed": true` en lugar de un error 500.
+If pyannote fails, the response includes `"diarization_failed": true` instead of a 500 error.
 
 ### `POST /v1/audio/diarization`
 
-Solo diarización, sin transcribir:
+Diarization only, without transcription:
 
 ```bash
 curl -X POST "http://localhost:8001/v1/audio/diarization" \
-  -F "file=@reunion.mp3" \
+  -F "file=@meeting.mp3" \
   -F "min_speakers=2"
 ```
 
 ### `GET /health` · `GET /v1/models`
 
-Endpoints estándar de salud y listado de modelos (OpenAI-compatible).
+Standard health check and model listing endpoints (OpenAI-compatible).
 
 ---
 
-## Configuración
+## Configuration
 
-Variables de entorno (`.env` o directas):
+Environment variables (`.env` or inline):
 
-| Variable | Default | Descripción |
+| Variable | Default | Description |
 |----------|---------|-------------|
-| `MODEL_NAME` | `Qwen/Qwen3-ASR-0.6B` | Modelo ASR (0.6B o 1.7B) |
-| `DEVICE` | `cpu` | Dispositivo (`cpu`, `cuda`) |
-| `PORT` | `8001` | Puerto del servidor |
-| `MAX_AUDIO_DURATION` | `3600` | Máximo en segundos |
-| `CHUNK_DURATION` | `30` | Segundos por chunk |
-| `CHUNK_THRESHOLD_MINUTES` | `30` | Activar chunking a partir de N minutos |
-| `HF_TOKEN` | — | Token HuggingFace para pyannote (diarización) |
+| `MODEL_NAME` | `Qwen/Qwen3-ASR-0.6B` | ASR model (0.6B or 1.7B) |
+| `DEVICE` | `cpu` | Device (`cpu`, `cuda`) |
+| `PORT` | `8001` | Server port |
+| `MAX_AUDIO_DURATION` | `3600` | Max audio duration in seconds |
+| `CHUNK_DURATION` | `30` | Seconds per chunk |
+| `CHUNK_THRESHOLD_MINUTES` | `30` | Enable chunking for audio longer than N minutes |
+| `HF_TOKEN` | — | HuggingFace token for pyannote (diarization) |
 
-### Diarización (opcional)
+### Diarization (optional)
 
-Requiere aceptar los términos de pyannote y un token:
+Requires accepting pyannote's terms and a token:
 
-1. Crear cuenta en [huggingface.co](https://huggingface.co/join)
-2. Aceptar términos: [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
-3. Generar token en [Settings → Tokens](https://huggingface.co/settings/tokens)
-4. `export HF_TOKEN=hf_xxx` o agregarlo al `.env`
+1. Create an account at [huggingface.co](https://huggingface.co/join)
+2. Accept terms: [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+3. Generate a token at [Settings → Tokens](https://huggingface.co/settings/tokens)
+4. `export HF_TOKEN=hf_xxx` or add it to `.env`
 
 ---
 
-## Rendimiento
+## Performance
 
-Mediciones en **Mac Mini M4 (10 cores, 16 GB RAM)** con `torch.bfloat16`:
+Measurements on **Mac Mini M4 (10 cores, 16 GB RAM)** with `torch.bfloat16`:
 
-| Modelo | RAM | Carga inicial | 4s de audio | Factor real-time |
-|--------|-----|---------------|-------------|------------------|
+| Model | RAM | Initial load | 4s audio | Real-time factor |
+|-------|-----|--------------|----------|------------------|
 | **0.6B** | ~4 GB | ~67s | ~18s | **~4.5x** |
 | 1.7B | ~8 GB | ~147s | >10 min | >150x |
 
-**Para CPU, usa 0.6B.** El modelo 1.7B es para GPU.
+**For CPU, use 0.6B.** The 1.7B model is for GPU.
 
 ---
 
-## Lo que falta (roadmap)
+## What's missing (roadmap)
 
-- **Extraer audio + texto por segmento**: Nuevo endpoint que devuelva el audio recortado de un hablante específico junto con su transcripción. Necesario para automatizar el voice cloning de cada hablante real.
-- **Soporte GPU (NVIDIA)**: Actualmente optimizado para Apple Silicon M4. Adaptar para CUDA sin perder la simplicidad del deploy actual.
-- **Auto-speaker-labeling**: Mapear `SPEAKER_00` → nombre real usando embeddings de voz o metadata.
-- **Traducción integrada**: Endpoint opcional que devuelva texto traducido además del original.
+- **Segment audio + text extraction**: New endpoint that returns the trimmed audio of a specific speaker along with its transcript. Needed to automate voice cloning for each real speaker.
+- **GPU support (NVIDIA)**: Currently optimized for Apple Silicon M4. Adapt for CUDA without losing the simplicity of the current deployment.
+- **Auto-speaker-labeling**: Map `SPEAKER_00` → real name using voice embeddings or metadata.
+- **Integrated translation**: Optional endpoint that returns translated text alongside the original.
 
 ---
 
 ## Tests
 
 ```bash
-# Unitarios (rápidos, sin GPU, CI)
+# Unit tests (fast, no GPU, CI)
 python -m pytest test_server.py test_schemas.py -v
 
-# Integración (modelo real, ~40s, solo local)
+# Integration tests (real model, ~40s, local only)
 python -m pytest test_integration.py -v --run-integration
 ```
 
@@ -227,14 +229,14 @@ python -m pytest test_integration.py -v --run-integration
 
 ## Stack
 
-- **FastAPI** + **uvicorn** — API REST
-- **qwen-asr** — Wrapper oficial de Qwen3-ASR
-- **pyannote.audio** — Diarización de hablantes
-- **PyTorch** — Backend de inferencia
-- **ffmpeg** — Conversión y segmentación de audio
+- **FastAPI** + **uvicorn** — REST API
+- **qwen-asr** — Official Qwen3-ASR wrapper
+- **pyannote.audio** — Speaker diarization
+- **PyTorch** — Inference backend
+- **ffmpeg** — Audio conversion and segmentation
 
 ---
 
-## Licencia
+## License
 
-Código: MIT. Modelo Qwen3-ASR: Apache 2.0. pyannote: CC-BY-4.0.
+Code: MIT. Qwen3-ASR model: Apache 2.0. pyannote: CC-BY-4.0.
